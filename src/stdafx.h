@@ -35,9 +35,6 @@
 
 #include "include\libspotify\api.h"
 
-extern const uint8_t g_appkey[];
-extern const size_t g_appkey_size;
-
 #include "StudioException.h"
 
 extern void log( std::exception& ex );

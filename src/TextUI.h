@@ -26,12 +26,17 @@ MA 02111-1307, USA.
 #include "TextIO.h"
 #include "Form.h"
 #include "MusicPlayer.h"
+#include "AudioOutputStream.h"
+
+extern AudioOutputStream* audio_out;
 
 class TextUI
 {
 	bool	        m_running;
 	TextIO	        m_text_io;
     MusicPlayer*    m_player;
+    CachedTrack*    m_cached_track;
+    bool            m_caching;
 	
 public:
 	TextUI( MusicPlayer* player );
@@ -42,7 +47,7 @@ public:
 private:
     bool spotify_login();
     bool isUserSure();
-    void selectTrack( bool queue );
+    void selectTrack( bool queue, bool cache=false );
     void selectPlaylist( bool queue );
 
 	void quit(void);
@@ -50,6 +55,8 @@ private:
 	void listPlaylists(void);
 	void listTracks(void);
     void playTrack(void);
+    void cacheTrack(void);
+    void playCachedTrack(void);
     void stopTrack(void);
     void pauseTrack(void);
     void playPlaylist(void);
@@ -59,6 +66,14 @@ private:
     void queuePlaylist(void);
     void showQueuedTracks(void);
     void showPlayedTracks(void);
+    void analyzeTrack(void);
+
+    inline void clearCachedTrack(void) {
+        if ( m_cached_track ) {
+            CoTaskMemFree( m_cached_track );
+            m_cached_track = NULL;
+        }
+    }
 };
 
 typedef void (TextUI::*HandlerFunc)();
@@ -102,6 +117,8 @@ class PlaylistField : public NumberedListField
     MusicPlayer*    m_player;
     PlayerItems     m_playlists;
 
+    static int last_playlist_selection;
+
 public:
     PlaylistField( LPCSTR name, MusicPlayer* player ) :
         NumberedListField( name ),
@@ -117,11 +134,12 @@ public:
             addKeyValue( key++, name );
         }
         
-        setDefaultListValue( 1 );      
+        setDefaultListValue( last_playlist_selection );      
     }
 
     DWORD getPlaylist() {
-        return m_playlists[ getListValue()-1 ];
+        last_playlist_selection = getListValue();
+        return m_playlists[ last_playlist_selection-1 ];
     }
 };
 
