@@ -14,6 +14,8 @@
 #define VC_EXTRALEAN            // Exclude rarely-used stuff from Windows headers
 #endif
 
+#define _USE_MATH_DEFINES
+
 #include <afxwin.h>
 #include <cstdio>
 #include <tchar.h>
@@ -32,6 +34,7 @@
 #include <Mmdeviceapi.h>
 #include <mmsystem.h>
 #include <Audioclient.h>
+#include <cmath>
 
 #include "include\libspotify\api.h"
 

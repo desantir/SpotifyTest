@@ -23,9 +23,6 @@ MA 02111-1307, USA.
 #include "stdafx.h"
 #include "TextUI.h"
 #include "MusicPlayer.h"
-#include "AudioOutputStream.h"
-
-AudioOutputStream* audio_out = NULL;
 
 /**
  */
@@ -33,24 +30,10 @@ int main( int argc, char **argv )
 {
 	CoInitializeEx( NULL, COINIT_MULTITHREADED );
 
-    MusicPlayer music_player( "D:\\Users\\bobby\\Documents\\Visual Studio 11\\Projects\\Spotify\\Debug\\SpotifyEngine.dll", "" );
-
-    AudioOutputStream::collectAudioRenderDevices();
+    MusicPlayer music_player( "\\Users\\bobby\\Source\\Repos\\SpotifyEngine\\Debug\\SpotifyEngine.dll", "" );
 
     try {
         music_player.initialize();
-
-        WAVEFORMATEX waveFormat;
-        waveFormat.wFormatTag  = WAVE_FORMAT_PCM;
-        waveFormat.nChannels = 2;
-        waveFormat.nSamplesPerSec = 44100;
-        waveFormat.wBitsPerSample = 16;
-        waveFormat.cbSize = 0;
-        waveFormat.nBlockAlign = (waveFormat.wBitsPerSample * waveFormat.nChannels) / 8;
-        waveFormat.nAvgBytesPerSec = waveFormat.nSamplesPerSec * waveFormat.nBlockAlign;
-    
-        audio_out = AudioOutputStream::createAudioStream();
-        audio_out->openAudioStream( &waveFormat );
 
 	    TextUI ui( &music_player );
 	    ui.run();
@@ -59,11 +42,6 @@ int main( int argc, char **argv )
 		log( ex );
 		getchar();
 	}
-
-    if ( audio_out ) {
-        AudioOutputStream::releaseAudioStream ( audio_out );
-        audio_out = NULL;
-    }
 
     music_player.disconnect();
 

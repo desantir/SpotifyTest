@@ -33,21 +33,21 @@ int PlaylistField::last_playlist_selection = 1;
 
 static CString track_time( DWORD time );
 
+const unsigned SAMPLE_SIZE = 16384;
+
 // ----------------------------------------------------------------------------
 //
 TextUI::TextUI( MusicPlayer* player ) :
     m_player( player ),
-    m_running( false ),
-    m_cached_track( NULL ),
-    m_caching( false )
+    m_running( false )
 {
 	function_map[ "q" ] = HandlerInfo( &TextUI::quit,						false,	"Quit" );
 	function_map[ "lp" ] = HandlerInfo( &TextUI::listPlaylists,				false,	"List Playlists" );
 	function_map[ "lt" ] = HandlerInfo( &TextUI::listTracks,				false,	"List Tracks" );
-	function_map[ "at" ] = HandlerInfo( &TextUI::analyzeTrack,				false,	"Analyze Track" );
+	function_map[ "sti" ] = HandlerInfo( &TextUI::showTrackAudioInfo,		false,	"Show track audio info" );
+    function_map[ "sta" ] = HandlerInfo( &TextUI::showTrackAnalysis,   	    false,	"Show track analysis (if available)" );
 	function_map[ "pt" ] = HandlerInfo( &TextUI::playTrack,	    			false,	"Play Track" );
-    function_map[ "ct" ] = HandlerInfo( &TextUI::cacheTrack,	    		false,	"Cache Track" );
-    function_map[ "pct" ] = HandlerInfo( &TextUI::playCachedTrack,	  		false,	"Play Cached Track" );
+    function_map[ "pts" ] = HandlerInfo( &TextUI::playTrackSeek,	  		false,	"Play Track with Seek" );
 	function_map[ "qt" ] = HandlerInfo( &TextUI::queueTrack,	  			false,	"Queue Track" );
 	function_map[ "qp" ] = HandlerInfo( &TextUI::queuePlaylist,  			false,	"Queue Playlist" );
 	function_map[ "pp" ] = HandlerInfo( &TextUI::playPlaylist,	    		false,	"Play Playlist" );
@@ -64,7 +64,6 @@ TextUI::TextUI( MusicPlayer* player ) :
 //
 TextUI::~TextUI(void)
 {
-    clearCachedTrack();
 }
 
 // ----------------------------------------------------------------------------
@@ -85,10 +84,10 @@ void TextUI::run()
         CString label;
 
         DWORD length, remaining;
-        DWORD track = m_player->getPlayingTrack( &length, &remaining );
+        CString track_link;
 
-        if ( track ) {
-            label.Format( "Now %s: %s", ( m_caching ) ? "Caching" : "Playing", m_player->getTrackFullName( track ) );
+        if ( m_player->getPlayingTrack( track_link, &length, &remaining ) ) {
+            label.Format( "Now %s: %s", "Playing", m_player->getTrackFullName( track_link ) );
             label.AppendFormat( " | length %s remaining %s", track_time(length), track_time(remaining) );
 
             if ( m_player->isTrackPaused() )
@@ -104,16 +103,6 @@ void TextUI::run()
 		CString cmd;
 		int retcode = m_text_io.getString( cmd );
 		m_text_io.printf( "\n" );
-
-        if ( m_caching ) {      // See if cached is done
-            if ( m_player->getCachedTrack( &m_cached_track ) ) {
-                m_text_io.printf( "STATUS: Track cache complete %.02lf GBs frames %u length %s\n", 
-                    m_cached_track->data_size/(1024.0*1024.0*1024.0), 
-                    m_cached_track->frames,
-                    track_time(m_cached_track->length_ms) );
-                m_caching = false;
-            }
-        }
 
         if ( !m_player->isLoggedIn() )
             continue;
@@ -177,7 +166,7 @@ bool TextUI::spotify_login()
         if ( m_player->signon( username_field.getValue(), password_field.getValue() ) )
             break;
 
-        printf( "%s\n", m_player->getLastPlayerError() );
+        printf( "%s\n", (LPCSTR)m_player->getLastPlayerError() );
 
         password_field.setValue( "" );
     }
@@ -222,7 +211,7 @@ void TextUI::listPlaylists()
 
         PlayerItems tracks;
         m_player->getTracks( (*it), tracks );
-        printf( "%s (%d)\n", name, tracks.size() );
+        printf( "%s (%d)\n", (LPCSTR)name, tracks.size() );
     }
 }
 
@@ -245,23 +234,26 @@ void TextUI::listTracks(void)
             bool starred = false;
             CString detailedInfo;
 
-            m_player->getTrackInfo( (*it), &title, &artist, NULL, &duration, &starred );
-            
-            duration /= 1000;
-            int minutes = duration/60;
-            int seconds = duration%60;
+            if ( m_player->getTrackInfo( (*it), &title, &artist, NULL, &duration, &starred ) ) {
+                duration /= 1000;
+                int minutes = duration/60;
+                int seconds = duration%60;
 
-            printf( "%s [%d:%02d] %s by %s {%s}\n", title, minutes, seconds, (starred) ? "*" : "", artist );
+                printf( "%s by %s [%d:%02d] %s\n", (LPCSTR)title, (LPCSTR)artist, minutes, seconds, (starred) ? "*" : "" );
+            }
+            else
+                printf( "Error readin track info \n" );
         }
     }
 }
 
 // ----------------------------------------------------------------------------
 //
-void TextUI::selectTrack( bool queue, bool cache )
+void TextUI::selectTrack( bool queue, bool seek )
 {
 	PlaylistField playlist_field( "Playlist", m_player );
     TrackListField tracks_field( "Track", m_player );
+    IntegerField start_field( "Start (ms)", 0 );
 
 	class MyForm : public Form {
 		void fieldLeaveNotify( size_t field_num ) {
@@ -281,20 +273,23 @@ void TextUI::selectTrack( bool queue, bool cache )
 	form.add( playlist_field );
 	form.add( tracks_field );
 
+    if ( seek ) 
+        form.add( start_field );
+
     if ( form.play() ) {
-        if ( !cache )
-            m_player->playTrack( tracks_field.getTrack(), queue );
-        else {
-            clearCachedTrack();
-            m_caching = true;
-            m_player->cacheTrack( tracks_field.getTrack() );
-        }
+        if ( queue )
+            m_player->queueTrack( tracks_field.getTrack() );
+        else
+            m_player->playTrack( tracks_field.getTrack(), start_field.getLongValue() );
+
+        // Delay so the track starts 
+        Sleep( 500 );
     }
 }
 
 // ----------------------------------------------------------------------------
 //
-void TextUI::analyzeTrack( )
+void TextUI::showTrackAudioInfo( )
 {
     static char * key[] = { "C","C#","D","D#","E","F","F#","G","B#","B","B#","B" };
 
@@ -324,41 +319,107 @@ void TextUI::analyzeTrack( )
         DWORD duration = 0;
         bool starred = false;
         CString detailedInfo;
-        CString link;
         AudioInfo audio_info;
 
-        m_player->playTrack( tracks_field.getTrack(), false );
+        m_player->playTrack( tracks_field.getTrack(), 0L );
 
-        m_player->getTrackInfo( tracks_field.getTrack(), &title, &artist, NULL, &duration, &starred, &link );
-        bool got_info = m_player->getTrackAudioInfo( tracks_field.getTrack(), &audio_info );
+        m_player->getTrackInfo( tracks_field.getTrack(), &title, &artist, NULL, &duration, &starred );
+        AudioStatus status = m_player->getTrackAudioInfo( tracks_field.getTrack(), &audio_info, 5000 );
          
         duration /= 1000;
         int minutes = duration/60;
         int seconds = duration%60;
 
-        printf( "%s [%d:%02d] %s by %s\n\n", title, minutes, seconds, (starred) ? "*" : "", artist );
+        m_text_io.printf( "%s [%d:%02d] %s by %s\n\n", (LPCSTR)title, minutes, seconds, (starred) ? "*" : "", (LPCSTR)artist );
 
-        printf( "               link = %s\n", link );
-        
-        if ( got_info ) {
-            printf( "                 id = %s\n", audio_info.id );
-            printf( "           duration = %f seconds\n", audio_info.duration );
-            printf( "          song type = %s\n", audio_info.song_type );
-            printf( "                key = %s\n", key[audio_info.key] );
-            printf( "               mode = %s\n", audio_info.mode ? "major" : "minor" );
-            printf( "     time_signature = %d\n", audio_info.time_signature );
-            printf( "             energy = %f\n", audio_info.energy );
-            printf( "           liveness = %f\n", audio_info.liveness );
-            printf( "              tempo = %f BPM\n", audio_info.tempo );
-            printf( "        speechiness = %f\n", audio_info.speechiness );
-            printf( "       acousticness = %f\n", audio_info.acousticness );
-            printf( "   instrumentalness = %f\n", audio_info.instrumentalness );
-            printf( "           loudness = %f dB\n", audio_info.loudness );
-            printf( "            valence = %f\n", audio_info.valence );
-            printf( "       danceability = %f\n", audio_info.danceability );
+        m_text_io.printf( "               link = %s\n", tracks_field.getTrack() );
+       
+        switch (status) {
+            case OK:
+                m_text_io.printf( "                 id = %s\n", audio_info.id );
+                m_text_io.printf( "           duration = %f seconds\n", audio_info.duration );
+                m_text_io.printf( "          song type = %s\n", audio_info.song_type );
+                m_text_io.printf( "                key = %s\n", key[audio_info.key] );
+                m_text_io.printf( "               mode = %s\n", audio_info.mode ? "major" : "minor" );
+                m_text_io.printf( "     time_signature = %d\n", audio_info.time_signature );
+                m_text_io.printf( "             energy = %f\n", audio_info.energy );
+                m_text_io.printf( "           liveness = %f\n", audio_info.liveness );
+                m_text_io.printf( "              tempo = %f BPM\n", audio_info.tempo );
+                m_text_io.printf( "        speechiness = %f\n", audio_info.speechiness );
+                m_text_io.printf( "       acousticness = %f\n", audio_info.acousticness );
+                m_text_io.printf( "   instrumentalness = %f\n", audio_info.instrumentalness );
+                m_text_io.printf( "           loudness = %f dB\n", audio_info.loudness );
+                m_text_io.printf( "            valence = %f\n", audio_info.valence );
+                m_text_io.printf( "       danceability = %f\n", audio_info.danceability );
+                break;
+
+            case FAILED:
+                m_text_io.printf( "               status = FAILED\n" );
+                break;
+
+            case NOT_AVAILABLE:
+                m_text_io.printf( "               status = NOT AVAILABLE\n" );
+                break;
+
+            case QUEUED:
+                m_text_io.printf( "               status = QUEUED\n" );
+                break;
+            }
+
+        m_text_io.printf( "\n" );
+    }
+}
+
+// ----------------------------------------------------------------------------
+//
+void TextUI::showTrackAnalysis()
+{
+    PlaylistField playlist_field( "Playlist", m_player );
+    TrackListField tracks_field( "Track", m_player );
+
+    class MyForm : public Form {
+        void fieldLeaveNotify( size_t field_num ) {
+            if ( field_num == 0 ) {
+                PlaylistField* playlist_field = getField<PlaylistField>( 0 );
+                TrackListField* tracks_field = getField<TrackListField>( 1 );
+                tracks_field->setPlaylist( playlist_field->getPlaylist() );
+            }
         }
 
-        printf( "\n" );
+    public:
+        MyForm( TextIO* input_stream ) :
+            Form( input_stream ) {}
+    };
+
+    MyForm form( &m_text_io );
+    form.add( playlist_field );
+    form.add( tracks_field );
+
+    if ( form.play() ) {
+        AnalyzeInfo* info;
+
+        if ( !m_player->getTrackAnalysis( tracks_field.getTrack(), &info ) ) {
+            m_text_io.printf( "Analysis not currently available for this track - play complete track first\n" );
+            return;
+        }
+
+        m_text_io.printf( "%s - %d amplitude samples\n", (LPCSTR)info->link, info->data_count );
+
+        static const char* level_meter = "====================================================================================================";
+
+        UINT  ms = 0;
+        for ( size_t i=0; i < info->data_count; i++ ) {
+            uint16_t amplitude = info->data[i];
+
+            uint16_t amp = (uint16_t)(amplitude / 32767.0 * 100 + .5);
+
+            //printf( "%d %.2f\n", m_amplitude, amp );
+
+            const char *meter = &level_meter[ 100 - amp ];
+            m_text_io.printf( "%4.1f: %4d %s\n", ms/1000.0, amp, meter );
+
+            ms += info->duration_ms;
+        }
     }
 }
 
@@ -392,44 +453,9 @@ void TextUI::playTrack(void)
 
 // ----------------------------------------------------------------------------
 //
-void TextUI::cacheTrack(void)
+void TextUI::playTrackSeek(void)
 {
     selectTrack( false, true );
-}
-
-// ----------------------------------------------------------------------------
-//
-void TextUI::playCachedTrack(void)
-{
-    if ( m_caching || m_cached_track == NULL ) {
-        log_status( "Cached track in not available" );
-        return;
-    }
-
-    printf( "playing cached track (cannot be interrupted)\n" );
-
-    UINT frame = 0;
-    const UINT SAMPLE_BUFFER= 44100 * 3;
-    UINT frames = m_cached_track->frames;
-
-    while ( frames > 0 ) {
-        if ( audio_out->getCachedSamples() > SAMPLE_BUFFER ) {
-            ::Sleep( 1000 );
-            continue;
-        }
-
-        UINT load = std::min<UINT>( SAMPLE_BUFFER, frames );
-        printf( "yo playing %u frames\n", load );
-
-        if ( !audio_out->addSamples( load, 2, 44100, &m_cached_track->data[ frame * m_cached_track->getFrameSize() ] ) ) {
-            printf( "error\n" );
-            continue;
-        }
-
-        frame += load;
-        frames -= load;
-    }
-    // m_player->playCachedTrack( );
 }
 
 // ----------------------------------------------------------------------------
@@ -484,7 +510,7 @@ void TextUI::showQueuedTracks(void)
 
     for ( PlayerItems::iterator it=tracks.begin(); it != tracks.end(); it++, index++ ) {
         CString title = m_player->getTrackFullName( (*it) );
-        printf( "   %d: %s\n", index, title );
+        printf( "   %d: %s\n", index, (LPCSTR)title );
     }
 }
 
@@ -500,6 +526,7 @@ void TextUI::showPlayedTracks(void)
 
     for ( PlayerItems::iterator it=tracks.begin(); it != tracks.end(); it++, index++ ) {
         CString title = m_player->getTrackFullName( (*it) );
-        printf( "   %d: %s\n", index, title );
+        printf( "   %d: %s\n", index, (LPCSTR)title );
     }
 }
+

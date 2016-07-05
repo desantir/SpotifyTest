@@ -26,17 +26,12 @@ MA 02111-1307, USA.
 #include "TextIO.h"
 #include "Form.h"
 #include "MusicPlayer.h"
-#include "AudioOutputStream.h"
-
-extern AudioOutputStream* audio_out;
 
 class TextUI
 {
 	bool	        m_running;
 	TextIO	        m_text_io;
     MusicPlayer*    m_player;
-    CachedTrack*    m_cached_track;
-    bool            m_caching;
 	
 public:
 	TextUI( MusicPlayer* player );
@@ -55,10 +50,9 @@ private:
 	void listPlaylists(void);
 	void listTracks(void);
     void playTrack(void);
-    void cacheTrack(void);
-    void playCachedTrack(void);
     void stopTrack(void);
     void pauseTrack(void);
+    void playTrackSeek(void);
     void playPlaylist(void);
     void queueTrack(void);
     void forwardTrack(void);
@@ -66,14 +60,8 @@ private:
     void queuePlaylist(void);
     void showQueuedTracks(void);
     void showPlayedTracks(void);
-    void analyzeTrack(void);
-
-    inline void clearCachedTrack(void) {
-        if ( m_cached_track ) {
-            CoTaskMemFree( m_cached_track );
-            m_cached_track = NULL;
-        }
-    }
+    void showTrackAudioInfo(void);
+    void showTrackAnalysis(void);
 };
 
 typedef void (TextUI::*HandlerFunc)();
@@ -137,7 +125,7 @@ public:
         setDefaultListValue( last_playlist_selection );      
     }
 
-    DWORD getPlaylist() {
+    LPCSTR getPlaylist() {
         last_playlist_selection = getListValue();
         return m_playlists[ last_playlist_selection-1 ];
     }
@@ -156,7 +144,7 @@ public:
     {
     }
 
-    void setPlaylist( DWORD playlist ) {
+    void setPlaylist( LPCSTR playlist ) {
         m_player->getTracks( playlist, m_tracks );
 
         clear();
@@ -171,7 +159,7 @@ public:
         setDefaultListValue( 1 );  
     }
 
-    DWORD getTrack() {
+    LPCSTR getTrack() {
         return m_tracks.size() == 0 ? NULL : m_tracks[getListValue()-1 ];
     }
 };
