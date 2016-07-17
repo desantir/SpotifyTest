@@ -60,6 +60,8 @@ void MusicPlayer::initialize( )
     m_GetPlayerName = getAddress<GetPlayerName>( "GetPlayerName" );
     m_Connect = getAddress<Connect>( "Connect" );
     m_Disconnect = getAddress<Disconnect>( "Disconnect" );
+    m_RegisterEventListener = getAddress<RegisterEventListener>( "RegisterEventListener" );
+    m_UnregisterEventListener = getAddress<UnregisterEventListener>( "UnregisterEventListener" );
     m_Signon = getAddress<Signon>( "Signon" );
     m_GetPlaylists = getAddress<GetPlaylists>( "GetPlaylists" );
     m_GetPlaylistName = getAddress<GetPlaylistName>( "GetPlaylistName" );
@@ -121,6 +123,24 @@ bool MusicPlayer::disconnect( )
     m_library = NULL;
 
     return result;
+}
+
+// ----------------------------------------------------------------------------
+//
+bool MusicPlayer::registerEventListener( IPlayerEventCallback* listener )
+{
+    VERIFY_LIBRARY_LOADED;
+
+    return (*m_RegisterEventListener)( listener );
+}
+
+// ----------------------------------------------------------------------------
+//
+bool MusicPlayer::unregisterEventListener( IPlayerEventCallback* listener )
+{
+    VERIFY_LIBRARY_LOADED;
+
+    return (*m_UnregisterEventListener)( listener );
 }
 
 // ----------------------------------------------------------------------------

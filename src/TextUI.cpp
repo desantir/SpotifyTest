@@ -1,5 +1,5 @@
 /* 
-Copyright (C) 2011,2012 Robert DeSantis
+Copyright (C) 2011-2016 Robert DeSantis
 hopluvr at gmail dot com
 
 This file is part of DMX Studio.
@@ -58,6 +58,8 @@ TextUI::TextUI( MusicPlayer* player ) :
     function_map[ "b" ] = HandlerInfo( &TextUI::backTrack,				    false,	"Back track" );
     function_map[ "qx" ] = HandlerInfo( &TextUI::showQueuedTracks,		    false,	"Show track queue" );
     function_map[ "px" ] = HandlerInfo( &TextUI::showPlayedTracks,		    false,	"Show played tracks" );
+    function_map[ "ee" ] = HandlerInfo( &TextUI::enableEvents,  		    false,	"Enable events" );
+    function_map[ "de" ] = HandlerInfo( &TextUI::disableEvents,  		    false,	"Disable events" );
 }
 
 // ----------------------------------------------------------------------------
@@ -490,7 +492,17 @@ void TextUI::forwardTrack(void)
 //
 void TextUI::pauseTrack(void)
 {
-    m_player->pauseTrack( !m_player->isTrackPaused() );
+    bool desired_state = !m_player->isTrackPaused();
+
+    m_player->pauseTrack( desired_state );
+
+    while ( m_player->isTrackPaused() != desired_state ) {
+        CString track_link;
+        m_player->getPlayingTrack( track_link );
+
+        if ( track_link.GetLength() == 0 )
+            break;
+    }
 }
 
 // ----------------------------------------------------------------------------
@@ -528,5 +540,53 @@ void TextUI::showPlayedTracks(void)
         CString title = m_player->getTrackFullName( (*it) );
         printf( "   %d: %s\n", index, (LPCSTR)title );
     }
+}
+
+// ----------------------------------------------------------------------------
+//
+void TextUI::enableEvents()
+{
+    bool result = m_player->registerEventListener( this );
+
+    printf( "Events enabled: %s\n", result ? "YES" : "NO" );
+}
+
+// ----------------------------------------------------------------------------
+//
+void TextUI::disableEvents()
+{
+    bool result = m_player->unregisterEventListener( this );
+
+    printf( "Events disabled: %s\n", result ? "YES" : "NO" );
+}
+
+// ----------------------------------------------------------------------------
+//
+HRESULT TextUI::notify( PlayerEventData* pNotify )
+{
+    LPCSTR eventName;
+    
+    switch( pNotify->m_event ) {
+        case TRACK_PLAY:            eventName = "PLAY"; break;
+        case TRACK_STOP:            eventName = "STOP"; break;
+        case TRACK_PAUSE:           eventName = "PAUSE"; break;
+        case TRACK_RESUME:          eventName = "RESUME"; break;
+        case TRACK_POSITION:        eventName = "POSITION"; break;
+        case TRACK_QUEUES:          eventName = "TRACK_QUEUES"; break;
+        case PLAYLIST_ADDED:        eventName = "PLAYLIST_ADDED"; break;
+        case PLAYLIST_REMOVED:      eventName = "PLAYLIST_REMOVED"; break;
+        case PLAYLIST_CHANGED:      eventName = "PLAYLIST_CHANGED"; break;
+        default:                    eventName = "UNKNOWN";  break;
+    }
+
+    if ( pNotify->m_event != TRACK_QUEUES ) {
+        LPCSTR link = pNotify->m_link == NULL ? "?" : pNotify->m_link;
+
+        printf( "EVENT: %s %s (%s)\n", eventName, link, (LPCSTR)track_time(pNotify->m_event_ms) );
+    }
+    else
+        printf( "EVENT: %s played=%lu queued=%lu\n", eventName, pNotify->m_played_size, pNotify->m_queued_size );
+
+    return S_OK;
 }
 

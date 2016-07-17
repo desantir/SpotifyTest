@@ -1,5 +1,5 @@
 /* 
-Copyright (C) 2011-16 Robert DeSantis
+Copyright (C) 2011-2016 Robert DeSantis
 hopluvr at gmail dot com
 
 This file is part of DMX Studio.
@@ -46,6 +46,32 @@ struct AnalyzeInfo {
     uint16_t    data[1];                // Amplitude data (0 = 32767)
 };
 
+enum PlayerEvent {
+    TRACK_PLAY = 1,                     // Track play start
+    TRACK_STOP = 2,                     // Track stopped
+    TRACK_PAUSE = 3,                    // Track paused
+    TRACK_RESUME = 4,                   // Track resumed
+    TRACK_POSITION = 5,                 // Track position,
+    TRACK_QUEUES = 6,                   // Track queues changed
+    PLAYLIST_ADDED = 7,                 // New playlist added
+    PLAYLIST_REMOVED = 8,               // Playlist removed
+    PLAYLIST_CHANGED = 9                // Playlist changed (tracks, name, etc)
+};
+
+struct PlayerEventData {
+    PlayerEvent m_event;
+    ULONG       m_event_ms;
+    LPCSTR      m_link;
+    ULONG       m_played_size;
+    ULONG       m_queued_size;
+};
+
+class IPlayerEventCallback
+{
+public:
+    virtual HRESULT STDMETHODCALLTYPE notify( PlayerEventData* pNotify ) = 0;
+};
+
 struct AudioInfo {
     char        link[256];
     char        id[128];
@@ -69,6 +95,8 @@ typedef DWORD (__cdecl *GetPlayerApiVersion)( void );
 typedef void (__cdecl *GetPlayerName)( LPSTR buffer, size_t buffer_length );
 typedef bool (__cdecl *Connect)( void );
 typedef bool (__cdecl *Disconnect)( void );
+typedef bool (__cdecl *RegisterEventListener)( IPlayerEventCallback* listener );
+typedef bool (__cdecl *UnregisterEventListener)( IPlayerEventCallback* listener );
 typedef bool (__cdecl *Signon)( LPCSTR username, LPCSTR password );
 typedef bool (__cdecl *GetPlaylists)( UINT* num_lists, LPSTR playlist_links, size_t buffer_length );
 typedef bool (__cdecl *GetPlaylistName)( LPCSTR playlist_link, LPSTR buffer, size_t buffer_length );
@@ -107,6 +135,8 @@ class MusicPlayer
     GetPlayerName           m_GetPlayerName;
     Connect                 m_Connect;
     Disconnect              m_Disconnect;
+    RegisterEventListener   m_RegisterEventListener;
+    UnregisterEventListener m_UnregisterEventListener;
     Signon                  m_Signon;
     GetPlaylists            m_GetPlaylists;
     GetPlaylistName         m_GetPlaylistName;
@@ -152,7 +182,9 @@ public:
 
     CString getPlayerName( void );
     bool connect( void );
-    bool disconnect( void );
+    bool disconnect( void );    bool registerEventListener( IPlayerEventCallback* listener );
+    bool unregisterEventListener( IPlayerEventCallback* listener );
+
     bool signon( LPCSTR username, LPCSTR password );
     bool getPlaylists( PlayerItems& playlists );
     bool getTracks( LPCSTR playlist_link, PlayerItems& tracks );

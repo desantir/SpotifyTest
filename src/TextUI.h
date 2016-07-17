@@ -1,5 +1,5 @@
 /* 
-Copyright (C) 2011,2012 Robert DeSantis
+Copyright (C) 2011-2016 Robert DeSantis
 hopluvr at gmail dot com
 
 This file is part of DMX Studio.
@@ -27,7 +27,7 @@ MA 02111-1307, USA.
 #include "Form.h"
 #include "MusicPlayer.h"
 
-class TextUI
+class TextUI : private IPlayerEventCallback
 {
 	bool	        m_running;
 	TextIO	        m_text_io;
@@ -62,6 +62,10 @@ private:
     void showPlayedTracks(void);
     void showTrackAudioInfo(void);
     void showTrackAnalysis(void);
+    void enableEvents(void);
+    void disableEvents(void);
+
+    HRESULT STDMETHODCALLTYPE notify( PlayerEventData* pNotify );
 };
 
 typedef void (TextUI::*HandlerFunc)();

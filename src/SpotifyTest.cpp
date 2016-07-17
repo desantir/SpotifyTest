@@ -30,7 +30,13 @@ int main( int argc, char **argv )
 {
 	CoInitializeEx( NULL, COINIT_MULTITHREADED );
 
-    MusicPlayer music_player( "\\Users\\bobby\\Source\\Repos\\SpotifyEngine\\Debug\\SpotifyEngine.dll", "" );
+    CString user_directory( getUserDocumentDirectory() );
+    user_directory.Replace( "\\Documents", "" );
+
+    CString path;
+    path.Format( "%s\\Source\\Repos\\SpotifyEngine\\Debug\\SpotifyEngine.dll", (LPCSTR) user_directory );
+
+    MusicPlayer music_player( (LPCSTR)path, "" );
 
     try {
         music_player.initialize();
