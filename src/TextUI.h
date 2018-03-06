@@ -50,6 +50,7 @@ private:
 	void listPlaylists(void);
 	void listTracks(void);
     void playTrack(void);
+	void searchTrack(void);
     void stopTrack(void);
     void pauseTrack(void);
     void playTrackSeek(void);
@@ -121,9 +122,12 @@ public:
         int key = 1;
 
         for ( PlayerItems::iterator it=m_playlists.begin(); it != m_playlists.end(); it++ ) {
-            CString name = m_player->getPlaylistName( (*it) );
-            name.Remove( '\n' );
-            addKeyValue( key++, name );
+			PlaylistInfo playlist_info;
+			if ( m_player->getPlaylistInfo((*it), &playlist_info) ) {
+				CString name( playlist_info.playlist_name );
+				name.Remove( '\n' );
+				addKeyValue( key++, name );
+			}
         }
         
         setDefaultListValue( last_playlist_selection );      
@@ -162,6 +166,21 @@ public:
         
         setDefaultListValue( 1 );  
     }
+
+	void searchTracks( LPCSTR search_query ) {
+		m_player->searchTracks( search_query, m_tracks );
+
+		clear();
+
+		int key = 1;
+
+		for ( PlayerItems::iterator it=m_tracks.begin(); it != m_tracks.end(); it++ ) {
+			CString title = m_player->getTrackFullName( (*it) );
+			addKeyValue( key++, title );
+		}
+
+		setDefaultListValue( 1 );  
+	}
 
     LPCSTR getTrack() {
         return m_tracks.size() == 0 ? NULL : m_tracks[getListValue()-1 ];

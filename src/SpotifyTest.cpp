@@ -34,12 +34,19 @@ int main( int argc, char **argv )
     user_directory.Replace( "\\Documents", "" );
 
     CString path;
+
+#ifdef _DEBUG 
     path.Format( "%s\\Source\\Repos\\SpotifyEngine\\Debug\\SpotifyEngine.dll", (LPCSTR) user_directory );
+#else
+	path.Format( "%s\\Source\\Repos\\SpotifyEngine\\Release\\SpotifyEngine.dll", (LPCSTR) user_directory );
+#endif
 
     MusicPlayer music_player( (LPCSTR)path, "" );
 
     try {
         music_player.initialize();
+
+		DMXStudio::log_status( "Loaded music controller '%s'", music_player.getPlayerName() );
 
 	    TextUI ui( &music_player );
 	    ui.run();

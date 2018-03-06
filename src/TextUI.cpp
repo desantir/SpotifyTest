@@ -47,6 +47,7 @@ TextUI::TextUI( MusicPlayer* player ) :
 	function_map[ "sti" ] = HandlerInfo( &TextUI::showTrackAudioInfo,		false,	"Show track audio info" );
     function_map[ "sta" ] = HandlerInfo( &TextUI::showTrackAnalysis,   	    false,	"Show track analysis (if available)" );
 	function_map[ "pt" ] = HandlerInfo( &TextUI::playTrack,	    			false,	"Play Track" );
+	function_map[ "st" ] = HandlerInfo( &TextUI::searchTrack,	    		false,	"Search Track" );
     function_map[ "pts" ] = HandlerInfo( &TextUI::playTrackSeek,	  		false,	"Play Track with Seek" );
 	function_map[ "qt" ] = HandlerInfo( &TextUI::queueTrack,	  			false,	"Queue Track" );
 	function_map[ "qp" ] = HandlerInfo( &TextUI::queuePlaylist,  			false,	"Queue Playlist" );
@@ -84,13 +85,11 @@ void TextUI::run()
            break;
 
         CString label;
+        PlayingInfo playing_info;
 
-        DWORD length, remaining;
-        CString track_link;
-
-        if ( m_player->getPlayingTrack( track_link, &length, &remaining ) ) {
-            label.Format( "Now %s: %s", "Playing", m_player->getTrackFullName( track_link ) );
-            label.AppendFormat( " | length %s remaining %s", track_time(length), track_time(remaining) );
+        if ( m_player->getPlayingTrack( &playing_info ) ) {
+            label.Format( "Now %s: %s", "Playing", m_player->getTrackFullName( playing_info.track_link ) );
+            label.AppendFormat( " | length %s remaining %s", track_time(playing_info.track_length), track_time(playing_info.time_remaining) );
 
             if ( m_player->isTrackPaused() )
                 label.Append( " | PAUSED" );
@@ -208,12 +207,13 @@ void TextUI::listPlaylists()
     m_player->getPlaylists( playlists );
 
     for ( PlayerItems::iterator it=playlists.begin(); it != playlists.end(); it++ ) {
-        CString name = m_player->getPlaylistName( (*it) );
-        name.Remove( '\n' );
+		PlaylistInfo playlist_info;
+		if ( m_player->getPlaylistInfo((*it), &playlist_info) ) {
+			CString name( playlist_info.playlist_name );
+			name.Remove( '\n' );
 
-        PlayerItems tracks;
-        m_player->getTracks( (*it), tracks );
-        printf( "%s (%d)\n", (LPCSTR)name, tracks.size() );
+			printf( "%s (%d)\n", (LPCSTR)name, playlist_info.playlist_tracks );
+		}
     }
 }
 
@@ -231,22 +231,53 @@ void TextUI::listTracks(void)
         m_player->getTracks( playlist_field.getPlaylist(), tracks );
 
         for ( PlayerItems::iterator it=tracks.begin(); it != tracks.end(); it++ ) {
-            CString title, artist;
-            DWORD duration = 0;
-            bool starred = false;
-            CString detailedInfo;
+            TrackInfo track_info;
 
-            if ( m_player->getTrackInfo( (*it), &title, &artist, NULL, &duration, &starred ) ) {
-                duration /= 1000;
-                int minutes = duration/60;
-                int seconds = duration%60;
+            if ( m_player->getTrackInfo( (*it), &track_info ) ) {
+                track_info.track_duration_ms /= 1000;
+                int minutes = track_info.track_duration_ms/60;
+                int seconds = track_info.track_duration_ms%60;
 
-                printf( "%s by %s [%d:%02d] %s\n", (LPCSTR)title, (LPCSTR)artist, minutes, seconds, (starred) ? "*" : "" );
+                printf( "%s by %s [%d:%02d]\n", track_info.track_name, track_info.artist_name, 
+                        minutes, seconds );
             }
             else
-                printf( "Error readin track info \n" );
+                printf( "Error reading track info \n" );
         }
     }
+}
+
+// ----------------------------------------------------------------------------
+//
+void TextUI::searchTrack( )
+{
+	InputField search_field( "Track Search Query", "" );
+	TrackListField tracks_field( "Track", m_player );
+
+	class MyForm : public Form {
+		void fieldLeaveNotify( size_t field_num ) {
+			if ( field_num == 0 ) {
+				InputField* search_field = getField<InputField>( 0 );
+				TrackListField* tracks_field = getField<TrackListField>( 1 );
+				tracks_field->searchTracks( search_field->getValue() );
+			}
+		}
+
+	public:
+		MyForm( TextIO* input_stream ) :
+			Form( input_stream ) {}
+	};
+
+	MyForm form( &m_text_io );
+	form.add( search_field );
+	form.add( tracks_field );
+
+	if ( form.play() ) {
+		m_player->playTrack( tracks_field.getTrack(), 0 );
+
+		// Delay so the track starts 
+		Sleep( 500 );
+	}
 }
 
 // ----------------------------------------------------------------------------
@@ -317,29 +348,28 @@ void TextUI::showTrackAudioInfo( )
 	form.add( tracks_field );
 
     if ( form.play() ) {
-        CString title, artist;
-        DWORD duration = 0;
-        bool starred = false;
+        TrackInfo track_info;
         CString detailedInfo;
         AudioInfo audio_info;
 
         m_player->playTrack( tracks_field.getTrack(), 0L );
 
-        m_player->getTrackInfo( tracks_field.getTrack(), &title, &artist, NULL, &duration, &starred );
+        m_player->getTrackInfo( tracks_field.getTrack(), &track_info );
         AudioStatus status = m_player->getTrackAudioInfo( tracks_field.getTrack(), &audio_info, 5000 );
          
-        duration /= 1000;
-        int minutes = duration/60;
-        int seconds = duration%60;
+        track_info.track_duration_ms /= 1000;
+        int minutes = track_info.track_duration_ms/60;
+        int seconds = track_info.track_duration_ms%60;
 
-        m_text_io.printf( "%s [%d:%02d] %s by %s\n\n", (LPCSTR)title, minutes, seconds, (starred) ? "*" : "", (LPCSTR)artist );
+        m_text_io.printf( "%s [%d:%02d] by %s\n\n", track_info.track_name, 
+            minutes, seconds, track_info.artist_name );
 
         m_text_io.printf( "               link = %s\n", tracks_field.getTrack() );
        
         switch (status) {
             case OK:
                 m_text_io.printf( "                 id = %s\n", audio_info.id );
-                m_text_io.printf( "           duration = %f seconds\n", audio_info.duration );
+                m_text_io.printf( "           duration = %f milliseconds\n", audio_info.duration );
                 m_text_io.printf( "          song type = %s\n", audio_info.song_type );
                 m_text_io.printf( "                key = %s\n", key[audio_info.key] );
                 m_text_io.printf( "               mode = %s\n", audio_info.mode ? "major" : "minor" );
@@ -497,10 +527,11 @@ void TextUI::pauseTrack(void)
     m_player->pauseTrack( desired_state );
 
     while ( m_player->isTrackPaused() != desired_state ) {
-        CString track_link;
-        m_player->getPlayingTrack( track_link );
+        PlayingInfo playing_info;
 
-        if ( track_link.GetLength() == 0 )
+        m_player->getPlayingTrack( &playing_info );
+
+        if ( strlen( playing_info.track_link ) == 0 )
             break;
     }
 }
